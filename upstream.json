@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "producer_version": "0.1.0",
+  "repository": "https://github.com/docker-library/rabbitmq",
+  "revision": "0b2a146a189d6d604a77e5a474e3f12f46abdbe4",
+  "files": {
+    "LICENSE": "0a3ffdfc4f368b76ae1140b5fbe2f2f69ee76ee00a3024e8a09ca9b2e265186f",
+    "4.4/ubuntu/Dockerfile": "c89889e2ab7f8266b770a18f49f677671003044149acbb4b4266f1555de4b103",
+    "4.4/ubuntu/docker-entrypoint.sh": "1dfbddd933d0b5e77ab5ecfa33706e247f36eb3f2522fe85509ff10887dab898",
+    "4.4/ubuntu/10-defaults.conf": "86b7916ba1444c984f46169462780368ccde0c73b6b77ff51ecebfbff2f4532d",
+    "4.4/ubuntu/20-management_agent.disable_metrics_collector.conf": "b2596127e3ed8d53857c068f4dd9c7af42359812628f44cd31d984d716d0a993",
+    "4.4/ubuntu/management/Dockerfile": "a5ee7b73ab87fd8854a408b69ee81d83c1cd41bdd7206fc992607b9ae63fab4c",
+    "versions.json": "6bb2e49b7802ec66c99cef896e290d727cc87b7f77ef2cc1d8c88f5368093e5f"
+  }
+}

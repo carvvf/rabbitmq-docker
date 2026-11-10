@@ -1,0 +1,205 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Docker: build and qualify local image",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": [
+        "-m",
+        "tools.pipeline",
+        "check"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Lint: Dockerfile",
+      "hide": true,
+      "type": "shell",
+      "command": "docker run --rm -i hadolint/hadolint:v2.14.0 < Dockerfile\ndocker run --rm -i hadolint/hadolint:v2.14.0 < tests/client/Dockerfile",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "/bin/bash",
+          "args": [
+            "-e",
+            "-c"
+          ]
+        }
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: shell scripts",
+      "type": "process",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "--entrypoint",
+        "shellcheck",
+        "-v",
+        "${workspaceFolder}:/workspace:ro",
+        "-w",
+        "/workspace",
+        "koalaman/shellcheck-alpine:v0.10.0",
+        "--shell=bash",
+        "-x",
+        "tests/test-image.sh",
+        "scripts/trivy/resolve-version.sh"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true
+    },
+    {
+      "label": "Lint: GitHub Actions",
+      "type": "process",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "--entrypoint",
+        "actionlint",
+        "-v",
+        "${workspaceFolder}:/repo:ro",
+        "-w",
+        "/repo",
+        "rhysd/actionlint:1.7.7",
+        "-color",
+        ".github/workflows/ci.yml"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true
+    },
+    {
+      "label": "Test: build inputs",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_build_inputs.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true,
+      "group": "test"
+    },
+    {
+      "label": "Test: OCI evidence",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_oci_evidence.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true,
+      "group": "test"
+    },
+    {
+      "label": "Check: upstream recipe",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": [
+        "-m",
+        "tools.render_recipe",
+        "--check"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true
+    },
+    {
+      "label": "Test: RabbitMQ runtime",
+      "type": "process",
+      "command": "bash",
+      "args": [
+        "tests/test-image.sh",
+        "rabbitmq-docker:candidate",
+        "build/inputs.json"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true,
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    },
+    {
+      "label": "Trivy: scan CVE",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": [
+        "-m",
+        "tools.scan_candidate"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      }
+    },
+    {
+      "label": "Test: all",
+      "dependsOn": [
+        "Test: build inputs",
+        "Test: OCI evidence",
+        "Check: upstream recipe",
+        "Lint: Dockerfile",
+        "Lint: shell scripts",
+        "Lint: GitHub Actions",
+        "Test: RabbitMQ runtime"
+      ],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": false
+      }
+    }
+  ]
+}

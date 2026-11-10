@@ -1,0 +1,1 @@
+pika==1.4.4 --hash=sha256:48de960c97a93b55db06b8be4c53eb977c9c8a2754c57cdae9097abcbd70ce04
