@@ -12,10 +12,10 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
 import urllib.request
 
-from .build_inputs import ROOT, fingerprint, github_pages, image_digest, needs_rebuild, next_version, resolve
+from .build_inputs import ROOT, fingerprint, image_digest, needs_rebuild, next_version, resolve
+from .registry import package_tags
 from .render_recipe import render
 from .oci_evidence import export_evidence
 
@@ -125,22 +125,6 @@ def scan_findings(result):
 def reject_findings(found):
     if found:
         raise ValueError("HIGH/CRITICAL vulnerabilities block publication, including findings without a fix")
-
-
-def package_tags():
-    """Enumerate all GHCR versions; only a real missing package is bootstrap."""
-    url = "https://api.github.com/users/carvvf/packages/container/rabbitmq-docker/versions?per_page=100"
-    try:
-        versions = list(github_pages(url))
-    except urllib.error.HTTPError as error:
-        if error.code != 404:
-            raise
-        # Confirm authenticated ownership before interpreting a 404 as bootstrap.
-        repository = json.loads(run("gh", "api", "repos/carvvf/rabbitmq-docker", capture=True).stdout)
-        if repository.get("full_name") != "carvvf/rabbitmq-docker" or not repository.get("permissions", {}).get("push"):
-            raise ValueError("Cannot distinguish missing package from inaccessible package") from error
-        return []
-    return [tag for item in versions for tag in item["metadata"]["container"]["tags"]]
 
 
 def copy_image(source, target, directory):

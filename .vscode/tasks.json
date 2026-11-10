@@ -75,8 +75,7 @@
         "-w",
         "/repo",
         "rhysd/actionlint:1.7.7",
-        "-color",
-        ".github/workflows/ci.yml"
+        "-color"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -116,6 +115,26 @@
         "tests",
         "-p",
         "test_oci_evidence.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true,
+      "group": "test"
+    },
+    {
+      "label": "Test: retention policy",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_retention.py"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -183,6 +202,7 @@
       "dependsOn": [
         "Test: build inputs",
         "Test: OCI evidence",
+        "Test: retention policy",
         "Check: upstream recipe",
         "Lint: Dockerfile",
         "Lint: shell scripts",

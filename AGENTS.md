@@ -54,9 +54,11 @@ for public distribution as `ghcr.io/carvvf/rabbitmq-docker`.
 4. Block on every Trivy HIGH/CRITICAL OS or library finding, including findings
    without fixes. Keep scan reports, SBOM and provenance; explain scanner coverage
    limitations, especially source-built and embedded components.
-5. Serialize publishers. Build once and promote the same OCI artifact. No
-   deliberate notification failures, ignored vulnerabilities, or automatic image
-   deletion. Never upload registry credentials as artifacts.
+5. Serialize publication and retention cleanup. Build once and promote the same
+   OCI artifact. Never introduce deliberate notification failures or ignore
+   vulnerabilities. Retention may delete versions older than 60 days, preserving
+   latest, the ten newest custom releases, and all referenced OCI manifests.
+   Support dry runs and never upload registry credentials as artifacts.
 6. Preserve Docker Library's MIT attribution and component-specific license
    files. The repository license does not relicense shipped dependencies.
 
@@ -147,9 +149,11 @@ for public distribution as `ghcr.io/carvvf/rabbitmq-docker`.
 4. Block on every Trivy HIGH/CRITICAL OS or library finding, including findings
    without fixes. Keep scan reports, SBOM and provenance; explain scanner coverage
    limitations, especially source-built and embedded components.
-5. Serialize publishers. Build once and promote the same OCI artifact. No
-   deliberate notification failures, ignored vulnerabilities, or automatic image
-   deletion. Never upload registry credentials as artifacts.
+5. Serialize publication and retention cleanup. Build once and promote the same
+   OCI artifact. Never introduce deliberate notification failures or ignore
+   vulnerabilities. Retention may delete versions older than 60 days, preserving
+   latest, the ten newest custom releases, and all referenced OCI manifests.
+   Support dry runs and never upload registry credentials as artifacts.
 6. Preserve Docker Library's MIT attribution and component-specific license
    files. The repository license does not relicense shipped dependencies.
 

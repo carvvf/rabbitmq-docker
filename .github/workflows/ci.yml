@@ -5,9 +5,11 @@ on:
   pull_request:
   push:
     branches: [master]
-  schedule:
-    # UTC schedule; Europe/Rome: 03:17 CET / 04:17 CEST.
-    - cron: '17 2 * * *'
+  workflow_call:
+    inputs:
+      force_rebuild:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       force_rebuild:
@@ -39,6 +41,8 @@ jobs:
         run: |
           docker run --rm -i hadolint/hadolint:v2.14.0 < Dockerfile
           docker run --rm -i hadolint/hadolint:v2.14.0 < tests/client/Dockerfile
+      - name: Check GitHub Actions workflows
+        run: docker run --rm --entrypoint actionlint -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7 -color
 
   candidate:
     if: github.event_name == 'pull_request'

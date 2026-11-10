@@ -1,0 +1,23 @@
+name: Active GHCR image status
+run-name: Daily RabbitMQ source-build scan
+
+on:
+  schedule:
+    # UTC schedule; Europe/Rome: 03:17 CET / 04:17 CEST.
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force_rebuild:
+        description: Rebuild even when inputs and the active scan are unchanged
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  scan-and-rebuild:
+    uses: ./.github/workflows/ci.yml
+    with:
+      force_rebuild: ${{ inputs.force_rebuild || false }}

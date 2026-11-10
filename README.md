@@ -57,7 +57,7 @@ and direct non-root startup. External read-only plugin configuration uses
 Published tags are:
 
 1. `<rabbitmq-version>-custom.<N>`, for example `4.4.0-custom.1`: immutable,
-   allocated using all existing package-version pages with collision checks.
+   allocated using all existing registry tag pages with collision checks.
 2. `latest`: the most recently qualified image in the reviewed RabbitMQ line.
 
 `org.opencontainers.image.version` identifies the custom rebuild;
@@ -75,7 +75,7 @@ cluster upgrade or rollback safety.
 
 Requirements: system Python 3 with its standard library, Bash, Git, Docker
 with Buildx and a running Linux daemon, OpenSSL CLI, GNU `timeout`, and outbound HTTPS.
-Publication also needs `gh`. API authentication uses `GH_TOKEN`, then
+The GitHub CLI is optional when a token is supplied. API authentication uses `GH_TOKEN`, then
 `GITHUB_TOKEN`, then an existing `gh` login for `github.com`. CLI credentials
 are read once per process into memory and never printed or written to files.
 The authorization header is sent only to `api.github.com`. Without credentials,
@@ -130,7 +130,8 @@ The task picker follows the PostgreSQL/Qdrant repository layout:
    `python3 -m tools.pipeline check`, including build, CVE scan, and runtime tests.
 2. `Trivy: scan CVE` rescans the existing `build/candidate.tar` using the same
    scanner resolver and HIGH/CRITICAL gate as CI. It does not rebuild or publish.
-3. `Test: all` is the default test task. It runs offline tests, recipe consistency,
+3. `Test: all` is the default test task. It runs offline resolver, OCI evidence and
+   retention tests, recipe consistency,
    Dockerfile/shell/workflow lint, and RabbitMQ runtime tests in sequence.
    Runtime tests require the previously built `rabbitmq-docker:candidate` image
    and its matching `build/inputs.json`; this task does not build them implicitly.
@@ -143,10 +144,18 @@ update is required. Tasks run only when explicitly invoked and never publish.
 ### Workflow lifecycle
 
 Pull requests run offline checks and candidate qualification without publishing.
-Pushes to `master`, daily runs at `02:17 UTC` (03:17 CET / 04:17 CEST), and
-manual dispatch use the same resolver and pipeline. Only trusted `master`
-workflows in `carvvf/rabbitmq-docker` may publish. Publishers share one concurrency
-group without nested workflow locks.
+`Build, scan and publish` handles pushes to `master` and manual publication.
+`Active GHCR image status` runs daily at `02:17 UTC` (03:17 CET / 04:17 CEST)
+with optional manual `force_rebuild`. It calls the reusable build workflow,
+sharing its resolver, Trivy gate, runtime checks and promotion logic. Only trusted
+`master` workflows in `carvvf/rabbitmq-docker` may publish. Publication and
+retention jobs share one concurrency group without nested workflow locks.
+
+Publication tag discovery uses GHCR's authenticated Distribution API, including
+all tag pages. Only an explicit `404 NAME_UNKNOWN` on the first page is treated
+as a new package. Authentication failures, denied access, and later-page errors
+stop the run; repository code-write permissions are not used as a proxy for
+package-write access. The workflow needs `contents: read` and `packages: write`.
 
 New inputs, repository commit, official-image digest, missing active image,
 HIGH/CRITICAL findings, or manual `force_rebuild` trigger a rebuild. A current
@@ -166,11 +175,35 @@ Failures before promotion leave the previous `latest` intact. Failures after
 writing `latest` may leave it advanced; verification reports that failure without
 an unqualified automatic rollback. A rejected registry rescan may leave an
 immutable tag present, but it does not promote it. There are no intentional
-notification failures or automatic image deletions.
+notification failures. Image deletion is restricted to the retention workflow
+described below.
 
 Input inventory, build metadata, SBOM, provenance, scan JSON, and runtime logs
 are retained as CI artifacts for 14 days. Credentials and image archives are
 excluded from artifact uploads.
+
+### Retention cleanup
+
+`Retention cleanup` runs every Monday at `02:37 UTC` (03:37 CET / 04:37 CEST)
+and supports manual dispatch with `dry_run=true` to report without deleting.
+It enumerates all package-version and workflow-run pages before planning:
+
+1. Keep versions active within 60 days, `latest`, the ten newest custom releases,
+   unknown tags, and versions with missing or invalid timestamps.
+2. Recursively inspect retained OCI indexes and preserve every referenced runtime
+   and attestation manifest, including untagged manifests for SBOM and provenance.
+3. Delete only expired, unprotected package versions. Recheck each version before
+   deletion and stop if metadata changed, before deleting dependent manifests.
+4. Delete only completed workflow runs older than 60 days; exclude the current
+   run and recheck status and timestamps before deletion.
+
+The job shares the publication lock, requires `packages: write` and
+`actions: write`, and fails on denied access or incomplete registry inspection.
+The repository must have package administration access for package deletion;
+public visibility alone does not grant that access. The plan and partial or final
+result are uploaded as JSON evidence for 14 days. No credentials are included.
+Cleanup does not execute locally through VS Code tasks. Scheduled workflows
+become active after these files reach the repository default branch.
 
 ## Security coverage
 

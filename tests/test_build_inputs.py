@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from tools import build_inputs as inputs
 from tools import pipeline
+from tools import registry
 
 
 def release(version, **extra):
@@ -60,6 +61,65 @@ class GitHubAuthenticationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "GitHub CLI.*reset UTC") as failure:
                 inputs.request_json("https://api.github.com/repos/example/repo")
             self.assertNotIn("secret-credential", str(failure.exception))
+
+
+class RegistryTagTests(unittest.TestCase):
+    def test_token_exchange_requests_pull_scope_for_this_package(self):
+        with patch.object(registry, "github_authentication", return_value=("workflow-credential", "GH_TOKEN")), patch.dict(registry.os.environ, {"GITHUB_ACTOR": "publisher"}), patch.object(registry, "registry_json", return_value=({"token": "registry-token"}, "")) as request:
+            self.assertEqual(registry.registry_token(), "registry-token")
+            url, authorization = request.call_args.args
+            self.assertEqual(registry.urllib.parse.parse_qs(registry.urllib.parse.urlsplit(url).query),
+                             {"service": ["ghcr.io"], "scope": ["repository:carvvf/rabbitmq-docker:pull"]})
+            self.assertTrue(authorization.startswith("Basic "))
+
+    def test_missing_token_cannot_start_anonymous_bootstrap(self):
+        with patch.object(registry, "github_authentication", return_value=(None, "anonymous")), patch.object(registry, "registry_json") as request:
+            with self.assertRaisesRegex(ValueError, "Authenticated GHCR access"):
+                registry.package_tags()
+            request.assert_not_called()
+
+    def test_authenticated_unknown_name_is_bootstrap(self):
+        error = urllib.error.HTTPError("https://ghcr.io", 404, "Not Found", {},
+                                      io.BytesIO(b'{"errors":[{"code":"NAME_UNKNOWN"}]}'))
+        with patch.object(registry, "registry_token", return_value="token"), patch.object(registry, "registry_json", side_effect=error):
+            self.assertEqual(registry.package_tags(), [])
+
+    def test_denied_or_generic_not_found_cannot_become_bootstrap(self):
+        for status, code in [(401, "UNAUTHORIZED"), (403, "DENIED"), (404, "DENIED"), (404, "UNKNOWN")]:
+            error = urllib.error.HTTPError("https://ghcr.io", status, "Denied", {},
+                                          io.BytesIO(json.dumps({"errors": [{"code": code}]}).encode()))
+            with self.subTest(status=status, code=code), patch.object(registry, "registry_token", return_value="token"), patch.object(registry, "registry_json", side_effect=error):
+                with self.assertRaises(urllib.error.HTTPError):
+                    registry.package_tags()
+
+    def test_all_tag_pages_are_used_for_custom_numbering(self):
+        pages = [({"name": registry.NAME, "tags": ["latest", "4.4.0-custom.2"]},
+                  f'<{registry.TAGS_PATH}?n=100&last=4.4.0-custom.2>; rel="next"'),
+                 ({"name": registry.NAME, "tags": ["4.4.0-custom.15"]}, "")]
+        with patch.object(registry, "registry_token", return_value="token"), patch.object(registry, "registry_json", side_effect=pages) as request:
+            tags = registry.package_tags()
+            self.assertEqual(inputs.next_version("4.4.0", tags), "4.4.0-custom.16")
+            self.assertEqual(request.call_count, 2)
+
+    def test_later_page_failure_cannot_return_partial_tags(self):
+        error = urllib.error.HTTPError("https://ghcr.io", 404, "Not Found", {},
+                                      io.BytesIO(b'{"errors":[{"code":"NAME_UNKNOWN"}]}'))
+        pages = [({"name": registry.NAME, "tags": ["4.4.0-custom.1"]},
+                  f'<{registry.TAGS_PATH}?n=100&last=4.4.0-custom.1>; rel="next"'), error]
+        with patch.object(registry, "registry_token", return_value="token"), patch.object(registry, "registry_json", side_effect=pages):
+            with self.assertRaises(urllib.error.HTTPError):
+                registry.package_tags()
+
+    def test_pagination_cannot_send_credentials_to_another_host(self):
+        page = ({"name": registry.NAME, "tags": []}, '<https://example.com/tags>; rel="next"')
+        with patch.object(registry, "registry_token", return_value="token"), patch.object(registry, "registry_json", return_value=page) as request:
+            with self.assertRaisesRegex(ValueError, "pagination URL"):
+                registry.package_tags()
+            self.assertEqual(request.call_count, 1)
+
+    def test_existing_empty_package_is_not_an_error(self):
+        with patch.object(registry, "registry_token", return_value="token"), patch.object(registry, "registry_json", return_value=({"name": registry.NAME, "tags": None}, "")):
+            self.assertEqual(registry.package_tags(), [])
 
 
 class ReleaseSelectionTests(unittest.TestCase):
