@@ -3,8 +3,8 @@ run-name: RabbitMQ package and workflow retention
 
 on:
   schedule:
-    # UTC schedule; Europe/Rome: Monday 03:37 CET / 04:37 CEST.
-    - cron: '37 2 * * 1'
+    # UTC schedule; Europe/Rome: Monday 01:07 CET / 02:07 CEST.
+    - cron: '7 0 * * 1'
   workflow_dispatch:
     inputs:
       dry_run:

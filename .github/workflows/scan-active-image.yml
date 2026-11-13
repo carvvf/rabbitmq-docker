@@ -3,8 +3,8 @@ run-name: Daily RabbitMQ source-build scan
 
 on:
   schedule:
-    # UTC schedule; Europe/Rome: 03:17 CET / 04:17 CEST.
-    - cron: '17 2 * * *'
+    # UTC schedule; Europe/Rome: 00:47 CET / 01:47 CEST.
+    - cron: '47 23 * * *'
   workflow_dispatch:
     inputs:
       force_rebuild:
