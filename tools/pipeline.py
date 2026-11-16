@@ -15,6 +15,7 @@ import time
 import urllib.request
 
 from .build_inputs import ROOT, fingerprint, image_digest, needs_rebuild, next_version, resolve
+from .report_policy import evaluate_findings, parse_findings
 from .registry import package_tags
 from .render_recipe import render
 from .oci_evidence import export_evidence
@@ -114,17 +115,21 @@ def scan(image, report, trivy, archive=False):
 
 
 def scan_findings(result):
-    if (result.get("SchemaVersion") != 2
-            or result.get("Metadata", {}).get("OS", {}).get("Family") != "ubuntu"
+    if (not isinstance(result, dict)
+            or result.get("SchemaVersion") != 2
+            or not isinstance(result.get("Metadata"), dict)
+            or not isinstance(result["Metadata"].get("OS"), dict)
+            or result["Metadata"]["OS"].get("Family") != "ubuntu"
             or not isinstance(result.get("Results"), list)
-            or not any(row.get("Class") == "os-pkgs" and row.get("Type") == "ubuntu" for row in result["Results"])):
+            or not any(isinstance(row, dict) and row.get("Class") == "os-pkgs"
+                       and row.get("Type") == "ubuntu" for row in result["Results"])):
         raise ValueError("Expected a Trivy schema 2 image report with a detected Ubuntu package inventory")
-    return any(v["Severity"] in {"HIGH", "CRITICAL"} for row in result["Results"] for v in row.get("Vulnerabilities", []) or [])
+    return parse_findings(result)
 
 
-def reject_findings(found):
-    if found:
-        raise ValueError("HIGH/CRITICAL vulnerabilities block publication, including findings without a fix")
+def reject_findings(findings, context="Candidate image", observe=False):
+    if evaluate_findings(findings, context, observe):
+        raise ValueError("Fixable HIGH/CRITICAL vulnerabilities block publication")
 
 
 def copy_image(source, target, directory):
@@ -178,13 +183,14 @@ def pipeline(mode, force=False):
     if mode == "auto":
         tags = package_tags()
         labels = None
-        findings = False
+        findings = []
         if "latest" in tags:
             active = IMAGE + "@" + image_digest(IMAGE + ":latest")
             run("docker", "pull", "--platform", "linux/amd64", active)
             labels = json.loads(run("docker", "image", "inspect", active, "--format", "{{json .Config.Labels}}", capture=True).stdout)
             findings = scan(active, directory / "trivy-active.json", trivy)
-        if not needs_rebuild(inputs, labels, revision, findings=findings, force=force):
+            reject_findings(findings, "Active image", observe=True)
+        if not needs_rebuild(inputs, labels, revision, findings=bool(findings), force=force):
             summary("No rebuild required: active inputs, revision, and vulnerability scan are current.")
             return
     tags = package_tags() if mode != "check" else []
@@ -220,7 +226,7 @@ def pipeline(mode, force=False):
         digest = metadata["containerimage.digest"]
         verify_platform(release, digest)
         immutable = IMAGE + "@" + digest
-        reject_findings(scan(immutable, directory / "trivy-published.json", trivy))
+        reject_findings(scan(immutable, directory / "trivy-published.json", trivy), "Published image")
         # Digest selection prevents a mutable tag race during promotion.
         copy_image("docker://" + immutable, "docker://" + IMAGE + ":latest", directory)
         verify_platform(IMAGE + ":latest", digest)

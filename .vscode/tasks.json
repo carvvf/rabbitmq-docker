@@ -84,6 +84,26 @@
       "hide": true
     },
     {
+      "label": "Test: vulnerability policy",
+      "type": "process",
+      "command": "/usr/bin/python3",
+      "args": [
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_report_policy.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "hide": true,
+      "group": "test"
+    },
+    {
       "label": "Test: build inputs",
       "type": "process",
       "command": "/usr/bin/python3",
@@ -200,6 +220,7 @@
     {
       "label": "Test: all",
       "dependsOn": [
+        "Test: vulnerability policy",
         "Test: build inputs",
         "Test: OCI evidence",
         "Test: retention policy",

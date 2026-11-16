@@ -20,8 +20,8 @@ def main():
     scanner = f"aquasec/trivy:{version}"
     summary(f"Trivy: {scanner}; candidate: {archive}; report: {report}")
     run("docker", "pull", scanner)
-    reject_findings(scan(archive, report, scanner, archive=True))
-    summary("Candidate scan passed: no HIGH/CRITICAL findings in the detected inventory.")
+    reject_findings(scan(archive, report, scanner, archive=True), "Local candidate")
+    summary("Candidate scan passed: no fixable HIGH/CRITICAL findings in the detected inventory.")
 
 
 if __name__ == "__main__":

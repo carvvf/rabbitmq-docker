@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Check resolver and publication decisions
+      - name: Check vulnerability policy, resolver and publication decisions
         run: python3 -m unittest discover -s tests -p 'test_*.py'
       - name: Check recipe rendering
         run: python3 -m tools.render_recipe --check

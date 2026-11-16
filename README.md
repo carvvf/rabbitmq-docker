@@ -130,8 +130,8 @@ The task picker follows the PostgreSQL/Qdrant repository layout:
    `python3 -m tools.pipeline check`, including build, CVE scan, and runtime tests.
 2. `Trivy: scan CVE` rescans the existing `build/candidate.tar` using the same
    scanner resolver and HIGH/CRITICAL gate as CI. It does not rebuild or publish.
-3. `Test: all` is the default test task. It runs offline resolver, OCI evidence and
-   retention tests, recipe consistency,
+3. `Test: all` is the default test task. It runs offline vulnerability-policy,
+   resolver, OCI evidence and retention tests, recipe consistency,
    Dockerfile/shell/workflow lint, and RabbitMQ runtime tests in sequence.
    Runtime tests require the previously built `rabbitmq-docker:candidate` image
    and its matching `build/inputs.json`; this task does not build them implicitly.
@@ -145,8 +145,8 @@ update is required. Tasks run only when explicitly invoked and never publish.
 
 Pull requests run offline checks and candidate qualification without publishing.
 `Build, scan and publish` handles pushes to `master` and manual publication.
-`Active GHCR image status` runs daily at `02:17 UTC` (03:17 CET / 04:17 CEST)
-with optional manual `force_rebuild`. It calls the reusable build workflow,
+`Active GHCR image status` runs daily at `23:47 UTC`
+(00:47 CET / 01:47 CEST on the following day) with optional manual `force_rebuild`. It calls the reusable build workflow,
 sharing its resolver, Trivy gate, runtime checks and promotion logic. Only trusted
 `master` workflows in `carvvf/rabbitmq-docker` may publish. Publication and
 retention jobs share one concurrency group without nested workflow locks.
@@ -165,7 +165,9 @@ clean image completes successfully without rebuilding.
 2. Build one OCI candidate with BuildKit SBOM and provenance; retain the original
    attestation statements as separate evidence.
 3. Convert that candidate for Trivy and runtime qualification without rebuilding.
-4. Reject all HIGH/CRITICAL OS or library findings, including findings without fixes.
+4. Reject HIGH/CRITICAL OS or library findings with a fixed version listed by
+   Trivy, even when pins or compatibility prevent adopting the fix automatically.
+   Findings without a listed fix allow publication with explanatory warnings.
 5. Check collisions and publish the immutable tag from the original OCI archive.
 6. Verify its `linux/amd64` platform and OCI index digest, and scan its immutable
    registry digest before promoting `latest` to that exact index.
@@ -175,8 +177,14 @@ Failures before promotion leave the previous `latest` intact. Failures after
 writing `latest` may leave it advanced; verification reports that failure without
 an unqualified automatic rollback. A rejected registry rescan may leave an
 immutable tag present, but it does not promote it. There are no intentional
-notification failures. Image deletion is restricted to the retention workflow
-described below.
+notification failures. Initial scans validate evidence without warnings before
+remediation. Candidate and registry scans use the same gate, including manual
+publication; a clean rebuild succeeds without residual vulnerability warnings.
+Warnings identify the CVE, package, installed version, and target, with details
+in the job summary and retained scan reports. Scanner failures and missing,
+malformed, or incomplete reports remain errors. See the
+[CI vulnerability publication policy](docs/ci-security-policy.md). Image deletion
+is restricted to the retention workflow described below.
 
 Input inventory, build metadata, SBOM, provenance, scan JSON, and runtime logs
 are retained as CI artifacts for 14 days. Credentials and image archives are
@@ -184,7 +192,7 @@ excluded from artifact uploads.
 
 ### Retention cleanup
 
-`Retention cleanup` runs every Monday at `02:37 UTC` (03:37 CET / 04:37 CEST)
+`Retention cleanup` runs every Monday at `00:07 UTC` (01:07 CET / 02:07 CEST)
 and supports manual dispatch with `dry_run=true` to report without deleting.
 It enumerates all package-version and workflow-run pages before planning:
 

@@ -1,5 +1,6 @@
 """Offline regression tests for release selection and publication safety."""
 
+from contextlib import redirect_stdout
 import hashlib
 import io
 import json
@@ -13,6 +14,11 @@ from unittest.mock import patch
 from tools import build_inputs as inputs
 from tools import pipeline
 from tools import registry
+from tools.report_policy import Finding
+
+
+def scan_finding(fixed=""):
+    return Finding("image (ubuntu)", "CVE-2026-12345", "example", "1.0", "HIGH", fixed)
 
 
 def release(version, **extra):
@@ -172,10 +178,27 @@ class RebuildTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Ubuntu package inventory"):
             pipeline.scan_findings({"SchemaVersion": 2, "Results": []})
 
-    def test_unfixable_high_findings_still_block(self):
+    def test_unfixed_high_findings_trigger_rebuild_but_allow_publication(self):
         report = {"SchemaVersion": 2, "Metadata": {"OS": {"Family": "ubuntu"}}, "Results": [
-            {"Class": "os-pkgs", "Type": "ubuntu", "Vulnerabilities": [{"Severity": "HIGH", "FixedVersion": ""}]}]}
-        self.assertTrue(pipeline.scan_findings(report))
+            {"Target": "image (ubuntu)", "Class": "os-pkgs", "Type": "ubuntu", "Vulnerabilities": [
+                {"VulnerabilityID": "CVE-2026-12345", "PkgName": "example", "InstalledVersion": "1.0",
+                 "Severity": "HIGH", "FixedVersion": ""}]}]}
+        findings = pipeline.scan_findings(report)
+        self.assertTrue(findings)
+        with redirect_stdout(io.StringIO()):
+            pipeline.reject_findings(findings)
+
+    def test_ubuntu_inventory_does_not_override_invalid_target_evidence(self):
+        report = {"SchemaVersion": 2, "Metadata": {"OS": {"Family": "ubuntu"}}, "Results": [
+            {"Class": "os-pkgs", "Type": "ubuntu"}]}
+        with self.assertRaisesRegex(ValueError, "target is missing its name"):
+            pipeline.scan_findings(report)
+
+    def test_malformed_inventory_metadata_is_rejected(self):
+        for report in [None, [], {"SchemaVersion": 2, "Metadata": None},
+                       {"SchemaVersion": 2, "Metadata": {"OS": []}}]:
+            with self.subTest(report=report), self.assertRaisesRegex(ValueError, "Ubuntu package inventory"):
+                pipeline.scan_findings(report)
 
     def test_current_clean_image_is_not_rebuilt(self):
         labels = {"io.github.carvvf.rabbitmq-docker.inputs.sha256": inputs.fingerprint({"input": 1}), "org.opencontainers.image.revision": "revision"}
@@ -198,9 +221,11 @@ class PublicationTests(unittest.TestCase):
             self.commands.append(args)
             if args[:3] == ("git", "rev-parse", "HEAD"):
                 return subprocess.CompletedProcess(args, 0, "revision\n")
+            if args[:3] == ("docker", "image", "inspect"):
+                return subprocess.CompletedProcess(args, 0, "{}")
             return subprocess.CompletedProcess(args, 0, "0.76.1\n")
         patches = [patch.object(pipeline, "ROOT", self.root), patch.object(pipeline, "resolve", return_value=self.value),
-                   patch.dict(pipeline.os.environ, {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "carvvf/rabbitmq-docker", "GITHUB_REF": "refs/heads/master", "GITHUB_EVENT_NAME": "push"}),
+                   patch.dict(pipeline.os.environ, {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": "carvvf/rabbitmq-docker", "GITHUB_REF": "refs/heads/master", "GITHUB_EVENT_NAME": "push", "GITHUB_STEP_SUMMARY": "", "GITHUB_OUTPUT": ""}),
                    patch.object(pipeline, "prepare"), patch.object(pipeline, "build_arguments", return_value=[]),
                    patch.object(pipeline, "export_evidence"), patch.object(pipeline, "export_docker_archive"),
                    patch.object(pipeline, "run", side_effect=run),
@@ -210,7 +235,7 @@ class PublicationTests(unittest.TestCase):
             self.addCleanup(item.stop)
 
     def test_failed_candidate_scan_cannot_publish_or_run_runtime(self):
-        with patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", return_value=True), patch.object(pipeline, "copy_image") as promote:
+        with patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", return_value=[scan_finding("1.1")]), patch.object(pipeline, "copy_image") as promote:
             with self.assertRaisesRegex(ValueError, "HIGH/CRITICAL"):
                 pipeline.pipeline("auto", force=True)
             promote.assert_not_called()
@@ -228,13 +253,13 @@ class PublicationTests(unittest.TestCase):
             if args[:2] == ("bash", "tests/test-image.sh"):
                 raise subprocess.CalledProcessError(1, args)
             return original(*args, **kwargs)
-        with patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", return_value=False), patch.object(pipeline.run, "side_effect", fail_runtime), patch.object(pipeline, "copy_image") as promote:
+        with patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", return_value=[]), patch.object(pipeline.run, "side_effect", fail_runtime), patch.object(pipeline, "copy_image") as promote:
             with self.assertRaises(subprocess.CalledProcessError):
                 pipeline.pipeline("auto", force=True)
             promote.assert_not_called()
 
     def test_release_collision_is_detected_before_publication(self):
-        with patch.object(pipeline, "package_tags", side_effect=[[], [], ["4.4.0-custom.1"]]), patch.object(pipeline, "scan", return_value=False), patch.object(pipeline, "copy_image") as promote:
+        with patch.object(pipeline, "package_tags", side_effect=[[], [], ["4.4.0-custom.1"]]), patch.object(pipeline, "scan", return_value=[]), patch.object(pipeline, "copy_image") as promote:
             with self.assertRaisesRegex(ValueError, "already exists"):
                 pipeline.pipeline("auto", force=True)
             promote.assert_not_called()
@@ -242,11 +267,40 @@ class PublicationTests(unittest.TestCase):
     def test_failed_registry_scan_keeps_latest_untouched(self):
         (self.root / "build").mkdir()
         (self.root / "build/metadata.json").write_text(json.dumps({"containerimage.digest": "sha256:" + "a" * 64}))
-        with patch.dict(pipeline.os.environ, {"GH_TOKEN": "test-token"}), patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", side_effect=[False, True]), patch.object(pipeline, "verify_platform"), patch.object(pipeline, "copy_image") as promote:
+        with patch.dict(pipeline.os.environ, {"GH_TOKEN": "test-token"}), patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", side_effect=[[], [scan_finding("1.1")]]), patch.object(pipeline, "verify_platform"), patch.object(pipeline, "copy_image") as promote:
             with self.assertRaisesRegex(ValueError, "HIGH/CRITICAL"):
                 pipeline.pipeline("auto", force=True)
             self.assertEqual(promote.call_count, 1)
             self.assertTrue(promote.call_args.args[1].endswith(":4.4.0-custom.1"))
+
+    def test_rebuild_with_unfixed_findings_promotes_and_warns(self):
+        (self.root / "build").mkdir()
+        (self.root / "build/metadata.json").write_text(json.dumps({"containerimage.digest": "sha256:" + "a" * 64}))
+        stdout = io.StringIO()
+        with patch.dict(pipeline.os.environ, {"GH_TOKEN": "test-token"}), patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", return_value=[scan_finding()]), patch.object(pipeline, "verify_platform"), patch.object(pipeline, "copy_image") as promote, redirect_stdout(stdout):
+            pipeline.pipeline("auto", force=True)
+        self.assertEqual(promote.call_count, 2)
+        self.assertTrue(promote.call_args.args[1].endswith(":latest"))
+        self.assertIn("::warning", stdout.getvalue())
+        self.assertIn("Published image: publication allowed", stdout.getvalue())
+        self.assertIn("CVE-2026-12345", stdout.getvalue())
+
+    def test_clean_remediation_has_no_initial_or_residual_warning(self):
+        (self.root / "build").mkdir()
+        (self.root / "build/metadata.json").write_text(json.dumps({"containerimage.digest": "sha256:" + "a" * 64}))
+        stdout = io.StringIO()
+        with patch.dict(pipeline.os.environ, {"GH_TOKEN": "test-token"}), patch.object(pipeline, "package_tags", return_value=["latest"]), patch.object(pipeline, "image_digest", return_value="sha256:" + "a" * 64), patch.object(pipeline, "scan", side_effect=[[scan_finding("1.1")], [], []]), patch.object(pipeline, "verify_platform"), patch.object(pipeline, "copy_image") as promote, redirect_stdout(stdout):
+            pipeline.pipeline("auto")
+        self.assertEqual(promote.call_count, 2)
+        self.assertIn("Active image: 1 fixable", stdout.getvalue())
+        self.assertNotIn("::warning", stdout.getvalue())
+        self.assertNotIn("::error", stdout.getvalue())
+
+    def test_scanner_failure_prevents_publication(self):
+        with patch.object(pipeline, "package_tags", return_value=[]), patch.object(pipeline, "scan", side_effect=subprocess.CalledProcessError(1, "trivy")), patch.object(pipeline, "copy_image") as promote:
+            with self.assertRaises(subprocess.CalledProcessError):
+                pipeline.pipeline("auto", force=True)
+            promote.assert_not_called()
 
 
 class ArchiveExportTests(unittest.TestCase):
