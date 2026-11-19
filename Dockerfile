@@ -220,6 +220,10 @@ ARG CACHEBUST
 ARG RABBITMQ_SOURCE_SHA256
 ARG RABBITMQ_SIGNATURE_SHA256
 
+# Ubuntu ships Pebble outside dpkg, so apt upgrades do not patch its embedded Go runtime.
+# RabbitMQ uses docker-entrypoint.sh and rabbitmq-server instead of Pebble.
+RUN rm -f /usr/bin/pebble
+
 # OPENSSL/ERLANG_INSTALL_PATH_PREFIX are defined in a different stage, so define them again
 ENV ERLANG_INSTALL_PATH_PREFIX=/opt/erlang
 ENV OPENSSL_INSTALL_PATH_PREFIX=/opt/openssl

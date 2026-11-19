@@ -220,6 +220,14 @@ fixed in Ubuntu 26.04 by `3.2.1ubuntu0.1`. Confirm built-package versions and
 scan results: a rebuild alone does not prove remediation. APT is outside normal
 AMQP processing, but package installation during build still affects exposure.
 
+The runtime stage removes `/usr/bin/pebble`, an unused service manager inherited
+from the Ubuntu base image outside dpkg's package inventory. APT upgrades cannot
+patch its embedded Go standard library, which caused CVE-2026-97054 to remain
+in a freshly rebuilt candidate. RabbitMQ starts through `docker-entrypoint.sh`
+and `rabbitmq-server` without Pebble. Consumers must not rely on Pebble being
+available in this image. Trivy continues to scan all detected OS and library
+packages with the same publication gate.
+
 Trivy scans OS and recognized language-library packages. Compiled OTP, private
 OpenSSL, BEAM applications, Rust dependencies embedded in rabbitmqadmin, and
 static components may not all be identified or matched against advisories.

@@ -63,7 +63,14 @@ def render():
     text = replace_once(text, 'FROM ubuntu:26.04\n', 'FROM ${UBUNTU_BASE_IMAGE} AS rabbitmq-runtime\n')
     text = text.replace('ARG BUILDKIT_SBOM_SCAN_STAGE=true', 'ARG BUILDKIT_SBOM_SCAN_STAGE=true\nARG CACHEBUST')
     text = text.replace('apt-get update; \\\n', 'test -n "$CACHEBUST"; \\\n\tapt-get update; \\\n\tapt-get upgrade -y; \\\n')
-    text = replace_once(text, 'FROM ${UBUNTU_BASE_IMAGE} AS rabbitmq-runtime\n', 'FROM ${UBUNTU_BASE_IMAGE} AS rabbitmq-runtime\nARG CACHEBUST\nARG RABBITMQ_SOURCE_SHA256\nARG RABBITMQ_SIGNATURE_SHA256\n')
+    text = replace_once(
+        text, 'FROM ${UBUNTU_BASE_IMAGE} AS rabbitmq-runtime\n',
+        'FROM ${UBUNTU_BASE_IMAGE} AS rabbitmq-runtime\n'
+        'ARG CACHEBUST\nARG RABBITMQ_SOURCE_SHA256\nARG RABBITMQ_SIGNATURE_SHA256\n'
+        '\n# Ubuntu ships Pebble outside dpkg, so apt upgrades do not patch its embedded Go runtime.\n'
+        '# RabbitMQ uses docker-entrypoint.sh and rabbitmq-server instead of Pebble.\n'
+        'RUN rm -f /usr/bin/pebble\n',
+    )
     text = replace_once(text, 'ARG PGP_KEYSERVER=keyserver.ubuntu.com', 'ARG PGP_KEYSERVER=hkps://keyserver.ubuntu.com:443\nARG OPENSSL_SIGNATURE_SHA256')
     text = replace_once(text, '\tgpg --batch --verify "$OPENSSL_PATH.tar.gz.asc" "$OPENSSL_PATH.tar.gz";', '\techo "$OPENSSL_SIGNATURE_SHA256 *$OPENSSL_PATH.tar.gz.asc" | sha256sum --check --strict -; \\\n\tgpg --batch --verify "$OPENSSL_PATH.tar.gz.asc" "$OPENSSL_PATH.tar.gz";')
     text = replace_once(text, '\tgpg --batch --verify "$RABBITMQ_PATH.tar.xz.asc" "$RABBITMQ_PATH.tar.xz";', '\techo "$RABBITMQ_SIGNATURE_SHA256 *$RABBITMQ_PATH.tar.xz.asc" | sha256sum --check --strict -; \\\n\tgpg --batch --verify "$RABBITMQ_PATH.tar.xz.asc" "$RABBITMQ_PATH.tar.xz";')
