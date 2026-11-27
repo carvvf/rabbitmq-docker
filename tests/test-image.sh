@@ -96,8 +96,11 @@ wait_ready() {
   return 1
 }
 
+# The management API must report exactly the RabbitMQ release the build resolved
+# (expected_rabbit, read from the inputs below, before the first probe).
 probe() {
-  docker run --rm --network "$network" -v "$work/tls:/tls:ro" "$client" "$1"
+  docker run --rm --network "$network" -v "$work/tls:/tls:ro" \
+    -e EXPECTED_RABBITMQ_VERSION="$expected_rabbit" "$client" "$1"
 }
 
 start_broker

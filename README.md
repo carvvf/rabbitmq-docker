@@ -16,13 +16,15 @@ a successful build, public GHCR access, or acceptance on a live cluster.
 
 | Input | Automatic selection | Initial floor |
 | --- | --- | --- |
-| RabbitMQ | Stable `4.4.x` | `4.4.0` |
-| OpenSSL | Stable `3.5.x` | `3.5.9` |
-| Erlang/OTP | Stable `29.1.x`, including four-part patches | `29.1.2` |
+| RabbitMQ | Stable releases of `RABBITMQ_SERIES` | `4.4.0` |
+| OpenSSL | Stable releases of `OPENSSL_SERIES`, an LTS line | `3.5.9` |
+| Erlang/OTP | Stable releases of `OTP_SERIES`, including four-part patches | `29.1.2` |
 | Ubuntu | Current `ubuntu:26.04` digest | Same release only |
 | rabbitmqadmin | Pinned official recipe | `2.35.0` |
 | Trivy | Stable `0.76.x` container | `0.76.1` |
 
+`RABBITMQ_SERIES`, `OPENSSL_SERIES` and `OTP_SERIES` in `tools/build_inputs.py`
+are the only copies of the lines; a floor below a new line is still satisfied.
 New release lines and recipe changes require review. The shared resolver
 enumerates every upstream release page and selects numerically, excluding
 drafts and prereleases. Archives and signatures require published SHA-256
@@ -32,7 +34,8 @@ TLS and the upstream full signing-key fingerprint. OTP uses the archive
 checksum, as in the official recipe. Any resolution,
 checksum, signature, registry, or scanner error stops the operation.
 
-The official `rabbitmq:4.4-management` digest is an additional rebuild signal,
+The official management image digest of the RabbitMQ line
+(`rabbitmq:<RABBITMQ_SERIES>-management`) is an additional rebuild signal,
 not a runtime dependency or the only update source. Independent OpenSSL and
 OTP resolution acquires patches without waiting for an official image rebuild.
 
@@ -190,6 +193,23 @@ Input inventory, build metadata, SBOM, provenance, scan JSON, and runtime logs
 are retained as CI artifacts for 14 days. Credentials and image archives are
 excluded from artifact uploads.
 
+### Dependency updates
+
+`renovate.yml` runs Renovate weekly (Monday night, Europe/Rome) and on demand as
+the `ragtime-renovate` GitHub App, whose client ID is the repository variable
+`RENOVATE_APP_CLIENT_ID` and private key the secret `RENOVATE_APP_PRIVATE_KEY`.
+A new RabbitMQ, Erlang/OTP or OpenSSL release line waits on the Dependency
+Dashboard issue, each as an item of its own, and gets its own pull request only
+once approved. OpenSSL is offered only the lines endoflife.date marks as LTS. A
+new RabbitMQ line also needs a new recipe snapshot: the rendering stops until
+`vendor/` holds one for it. Every line change needs the matching change in
+`ragtime-rag-orch`, which refuses the image until it accepts the new line. New
+GitHub Actions versions and a new Trivy line go in one cumulative pull request.
+Renovate leaves alone the Ubuntu base, the recipe revision and its package
+steps, which come from the checksum-locked recipe. Nothing is merged
+automatically. Pull requests validate `renovate.json5` with the Renovate
+release `renovate.yml` runs.
+
 ### Retention cleanup
 
 `Retention cleanup` runs every Monday at `00:07 UTC` (01:07 CET / 02:07 CEST)
@@ -247,11 +267,12 @@ set it to public and verify anonymous registry access without mounted credential
 docker run --rm quay.io/skopeo/stable:v1.22.3 inspect docker://ghcr.io/carvvf/rabbitmq-docker:latest
 ```
 
-No publication or anonymous access is claimed until verified. The current
-Ragtime suite selects official `4.4.x-management` tags and validates the official
-repository identity; it rejects this repository and its custom/latest tags.
-Integration requires separate changes to selection, qualification, tests, and
-installation compatibility. This repository does not change the suite or clusters.
+The image is published and anonymously pullable. The Ragtime suite deploys
+`ghcr.io/carvvf/rabbitmq-docker:latest` and qualifies only images whose labels
+report RabbitMQ `4.4.x`, Erlang/OTP `29.1.x`, and OpenSSL `3.5.x`. A change of any
+of these release lines makes the suite refuse the image until `ragtime-rag-orch`
+accepts the new line, so both changes are reviewed and released together. This
+repository does not change the suite or clusters.
 
 ## License and third-party components
 

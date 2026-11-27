@@ -2,7 +2,7 @@
 
 import re
 
-from .build_inputs import ROOT, verify_recipe
+from .build_inputs import RABBITMQ_SERIES, ROOT, verify_recipe
 
 
 def replace_once(text, old, new):
@@ -53,7 +53,15 @@ def strengthen_shell(text):
 
 def render():
     verify_recipe()
-    vendor = ROOT / "vendor/docker-library-rabbitmq/4.4/ubuntu"
+    # The vendored recipe belongs to one RabbitMQ line: a new line needs its own
+    # snapshot and lock (AGENTS.md), so a missing directory stops the rendering.
+    recipe = f"vendor/docker-library-rabbitmq/{RABBITMQ_SERIES}/ubuntu"
+    vendor = ROOT / recipe
+    if not vendor.is_dir():
+        raise ValueError(
+            f"No vendored Docker Library recipe for RabbitMQ {RABBITMQ_SERIES}: "
+            "refresh vendor/ and upstream.json for the new line first."
+        )
     text = (vendor / "Dockerfile").read_text()
     text = replace_once(text, 'FROM ubuntu:26.04 AS build-base', 'ARG UBUNTU_BASE_IMAGE=ubuntu:26.04\nFROM ${UBUNTU_BASE_IMAGE} AS build-base')
     # Ubuntu 26.04 provides the old ncurses development name as a virtual package.
@@ -82,9 +90,9 @@ def render():
     text = replace_once(text, '\tmake install; \\\n', '\tmake install; \\\n\tmkdir -p /licenses; cp LICENSE.txt /licenses/Erlang-OTP-Apache-2.0.txt; \\\n')
     text = replace_once(text, 'COPY --from=openssl-builder $OPENSSL_INSTALL_PATH_PREFIX $OPENSSL_INSTALL_PATH_PREFIX', 'COPY --from=openssl-builder $OPENSSL_INSTALL_PATH_PREFIX $OPENSSL_INSTALL_PATH_PREFIX\nCOPY --from=erlang-builder /licenses/ /licenses/')
     text = replace_once(text, '\tgpg --batch --verify "$RABBITMQ_PATH.tar.xz.asc" "$RABBITMQ_PATH.tar.xz";', '\tgpg --batch --verify "$RABBITMQ_PATH.tar.xz.asc" "$RABBITMQ_PATH.tar.xz"; \\\n\techo "$RABBITMQ_SOURCE_SHA256 *$RABBITMQ_PATH.tar.xz" | sha256sum --check --strict -;')
-    text = replace_once(text, 'COPY --chown=rabbitmq:rabbitmq 10-defaults.conf 20-management_agent.disable_metrics_collector.conf', 'COPY --chown=rabbitmq:rabbitmq vendor/docker-library-rabbitmq/4.4/ubuntu/10-defaults.conf vendor/docker-library-rabbitmq/4.4/ubuntu/20-management_agent.disable_metrics_collector.conf')
-    text = replace_once(text, 'COPY docker-entrypoint.sh /usr/local/bin/', 'COPY --chmod=775 vendor/docker-library-rabbitmq/4.4/ubuntu/docker-entrypoint.sh /usr/local/bin/')
-    management = (vendor / 'management/Dockerfile').read_text().split('FROM rabbitmq:4.4', 1)[1]
+    text = replace_once(text, 'COPY --chown=rabbitmq:rabbitmq 10-defaults.conf 20-management_agent.disable_metrics_collector.conf', 'COPY --chown=rabbitmq:rabbitmq ' + recipe + '/10-defaults.conf ' + recipe + '/20-management_agent.disable_metrics_collector.conf')
+    text = replace_once(text, 'COPY docker-entrypoint.sh /usr/local/bin/', 'COPY --chmod=775 ' + recipe + '/docker-entrypoint.sh /usr/local/bin/')
+    management = (vendor / 'management/Dockerfile').read_text().split(f'FROM rabbitmq:{RABBITMQ_SERIES}', 1)[1]
     management = management.replace('apt-get update; \\\n', 'test -n "$CACHEBUST"; \\\n\tapt-get update; \\\n\tapt-get upgrade -y; \\\n')
     text += '\n# Management extends this build, never an external RabbitMQ runtime.\nFROM rabbitmq-runtime AS management\nARG CACHEBUST\n' + management
     text += '\nCOPY vendor/docker-library-rabbitmq/LICENSE /licenses/docker-library-rabbitmq-MIT.txt\nCOPY build/licenses/ /licenses/rabbitmq/\nCOPY build/inputs.json /usr/share/rabbitmq-build/inputs.json\n'

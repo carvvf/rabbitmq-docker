@@ -2,6 +2,7 @@
 
 import base64
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -18,7 +19,7 @@ if mode == "publish":
     authorization = base64.b64encode(b"image-test:image-test-password").decode()
     request.add_header("Authorization", "Basic " + authorization)
     with urllib.request.urlopen(request, context=context, timeout=15) as response:
-        if not json.load(response).get("rabbitmq_version", "").startswith("4.4."):
+        if json.load(response).get("rabbitmq_version") != os.environ["EXPECTED_RABBITMQ_VERSION"]:
             raise RuntimeError("Unexpected management API version")
     try:
         urllib.request.urlopen("https://broker:15671/api/overview", context=context, timeout=15)

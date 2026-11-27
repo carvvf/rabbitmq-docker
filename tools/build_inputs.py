@@ -16,10 +16,29 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
 PRODUCER_VERSION = "0.1.0"
+# Release lines, the only copy of each. A new line is a reviewed change (AGENTS.md,
+# release and compatibility policy): Renovate lists it on the Dependency Dashboard and
+# opens its pull request only once approved. A floor below a new line is still satisfied,
+# so the floors below need no change with it. OpenSSL is offered LTS lines only.
+# renovate: datasource=github-releases depName=rabbitmq/rabbitmq-server
+RABBITMQ_SERIES = "4.4"
+# renovate: datasource=custom.openssl-lts depName=openssl
+OPENSSL_SERIES = "3.5"
+# renovate: datasource=github-releases depName=erlang/otp
+OTP_SERIES = "29.1"
+
+
+def series(text):
+    """A release line such as "4.4" as the tuple the selection compares."""
+    if not re.fullmatch(r"[0-9]+\.[0-9]+", text):
+        raise ValueError(f"Invalid release line: {text}")
+    return tuple(map(int, text.split(".")))
+
+
 LINES = {
-    "rabbitmq": ("rabbitmq/rabbitmq-server", "v", (4, 4), (4, 4, 0)),
-    "openssl": ("openssl/openssl", "openssl-", (3, 5), (3, 5, 9)),
-    "otp": ("erlang/otp", "OTP-", (29, 1), (29, 1, 2)),
+    "rabbitmq": ("rabbitmq/rabbitmq-server", "v", series(RABBITMQ_SERIES), (4, 4, 0)),
+    "openssl": ("openssl/openssl", "openssl-", series(OPENSSL_SERIES), (3, 5, 9)),
+    "otp": ("erlang/otp", "OTP-", series(OTP_SERIES), (29, 1, 2)),
 }
 
 
@@ -157,8 +176,8 @@ def resolve():
             raise ValueError("Invalid source revision")
         result[component] = dict(data, version=version, tag=release["tag_name"], revision=commit["sha"])
     result["ubuntu_digest"] = image_digest("ubuntu:26.04")
-    result["official_digest"] = image_digest("rabbitmq:4.4-management")
-    recipe_versions = json.loads((ROOT / "vendor/docker-library-rabbitmq/versions.json").read_text())["4.4"]
+    result["official_digest"] = image_digest(f"rabbitmq:{RABBITMQ_SERIES}-management")
+    recipe_versions = json.loads((ROOT / "vendor/docker-library-rabbitmq/versions.json").read_text())[RABBITMQ_SERIES]
     admin_version = recipe_versions["rabbitmqadmin"]["version"]
     admin_commit, _ = request_json(f"https://api.github.com/repos/rabbitmq/rabbitmqadmin-ng/commits/v{admin_version}")
     if not re.fullmatch(r"[0-9a-f]{40}", admin_commit["sha"]):
