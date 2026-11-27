@@ -20,9 +20,15 @@ for public distribution as `ghcr.io/carvvf/rabbitmq-docker`.
 
 ## Release and compatibility policy
 
-1. Automatic selection is limited to stable RabbitMQ `4.4.x`, OpenSSL `3.5.x`,
-   Erlang/OTP `29.1.x` (including four-part patch releases), and Ubuntu `26.04`.
-   Floors are RabbitMQ `4.4.0`, OpenSSL `3.5.9`, and OTP `29.1.2`.
+1. Automatic selection is limited to stable releases of the RabbitMQ, OpenSSL
+   and Erlang/OTP lines pinned as `RABBITMQ_SERIES`, `OPENSSL_SERIES` and
+   `OTP_SERIES` in `tools/build_inputs.py`, the only copy of each (OTP
+   including four-part patch releases), at or above the floors there, and to
+   the Ubuntu release of the vendored recipe. The renderer and the official
+   image signal derive the RabbitMQ line from `RABBITMQ_SERIES`. Renovate lists
+   a new line on the Dependency Dashboard, OpenSSL LTS lines only, and opens its
+   pull request only once approved; that approval is the confirmation rule 2
+   asks for.
 2. A change to a release line, floor, runtime dependency policy, recipe revision,
    implementation version, schema, or externally visible behavior requires an
    explanation of compatibility, tests, consumers, rollout, and migration, then
@@ -97,8 +103,13 @@ for public distribution as `ghcr.io/carvvf/rabbitmq-docker`.
 3. Use feature branch, user commits, feature-branch push, PR, and user-controlled
    merge. Force pushes require separate explicit authorization and recovery plan.
 4. Do not change `ragtime-rag-orch`, persisted installation profiles, or live
-   clusters as part of image work. The current suite rejects this repository
-   and its custom/latest tags; integration needs separate coordinated changes.
+   clusters as part of image work. The suite deploys
+   `ghcr.io/carvvf/rabbitmq-docker:latest` and qualifies only images whose
+   labels report RabbitMQ `4.4.x`, Erlang/OTP `29.1.x`, and OpenSSL `3.5.x`
+   (`src/ragtime_rag_orch/rabbitmq_image_identity.py` in `ragtime-rag-orch`).
+   A change of any of these lines makes the suite refuse the image, so it
+   needs a coordinated change in `ragtime-rag-orch`, reviewed and released
+   together with this repository's change.
 5. Report what changed, why, verification actually performed, remaining limits,
    and the operator actions needed to publish and consume the image. Do not
    claim publication or cluster compatibility without the corresponding evidence.

@@ -1,0 +1,100 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  // Renovate proposes only what the daily rebuild does not move on its own. Rebuilds already
+  // take the newest patch of each release line, the Ubuntu base by digest, the official
+  // management image digest and the newest Trivy patch of its line. The Ubuntu base, the
+  // recipe revision and its package steps come from the checksum-locked Docker Library
+  // recipe, so Renovate leaves them alone (AGENTS.md, release and compatibility policy).
+  // Keep pinned GitHub Actions on a commit digest, with the release tag in a comment.
+  extends: ["helpers:pinGitHubActionDigests"],
+  enabledManagers: ["github-actions", "custom.regex"],
+  // A release line change needs explicit confirmation, so each line waits on the Dependency
+  // Dashboard as an item of its own and gets its own pull request only once approved there.
+  // GitHub Actions and the Trivy line go in one cumulative pull request. Nothing is merged
+  // automatically.
+  dependencyDashboard: { enabled: true },
+  automerge: false,
+  // Major updates stay in the cumulative pull request instead of a branch of their own.
+  separateMajorMinor: false,
+  customDatasources: {
+    // OpenSSL release lines that endoflife.date marks as LTS; other lines are never offered.
+    "openssl-lts": {
+      defaultRegistryUrlTemplate: "https://endoflife.date/api/openssl.json",
+      format: "json",
+      transformTemplates: ['{"releases": [$[lts = true].{"version": cycle}]}'],
+    },
+  },
+  customManagers: [
+    {
+      // RABBITMQ_SERIES in tools/build_inputs.py: a release tag vX.Y.Z offers the line X.Y.
+      customType: "regex",
+      managerFilePatterns: ["/^tools/build_inputs\\.py$/"],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>github-releases) depName=(?<depName>rabbitmq/rabbitmq-server)\\n[A-Z_]+ = "(?<currentValue>\\d+\\.\\d+)"',
+      ],
+      extractVersionTemplate: "^v(?<version>\\d+\\.\\d+)\\.\\d+$",
+      versioningTemplate: "loose",
+    },
+    {
+      // OTP_SERIES: a release tag OTP-X.Y.Z, or a four-part OTP-X.Y.Z.W, offers the line X.Y.
+      customType: "regex",
+      managerFilePatterns: ["/^tools/build_inputs\\.py$/"],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>github-releases) depName=(?<depName>erlang/otp)\\n[A-Z_]+ = "(?<currentValue>\\d+\\.\\d+)"',
+      ],
+      extractVersionTemplate: "^OTP-(?<version>\\d+\\.\\d+)\\.\\d+(\\.\\d+)?$",
+      versioningTemplate: "loose",
+    },
+    {
+      // OPENSSL_SERIES: the LTS lines of the custom datasource above, already "X.Y".
+      customType: "regex",
+      managerFilePatterns: ["/^tools/build_inputs\\.py$/"],
+      matchStrings: [
+        '# renovate: datasource=(?<datasource>custom\\.openssl-lts) depName=(?<depName>openssl)\\n[A-Z_]+ = "(?<currentValue>\\d+\\.\\d+)"',
+      ],
+      versioningTemplate: "loose",
+    },
+    {
+      // Only the Trivy release line is pinned; resolve-version.sh takes its newest patch.
+      // TRIVY_FLOOR is not rewritten: a floor below the new line is still satisfied.
+      customType: "regex",
+      managerFilePatterns: ["/^scripts/trivy/resolve-version\\.sh$/"],
+      matchStrings: ["TRIVY_SERIES='(?<currentValue>\\d+\\.\\d+)'"],
+      datasourceTemplate: "docker",
+      depNameTemplate: "aquasec/trivy",
+      extractVersionTemplate: "^(?<version>\\d+\\.\\d+)\\.\\d+$",
+      versioningTemplate: "loose",
+    },
+  ],
+  packageRules: [
+    {
+      // One cumulative pull request per run, rebased while new updates arrive.
+      matchPackageNames: ["*"],
+      groupName: "uncovered dependencies",
+    },
+    {
+      matchDepNames: ["rabbitmq/rabbitmq-server"],
+      dependencyDashboardApproval: true,
+      groupName: "RabbitMQ release line",
+      prBodyNotes: [
+        "A RabbitMQ release line change needs a new checksum-locked Docker Library recipe snapshot in vendor/ and upstream.json (the rendering stops until it exists), the explanation of compatibility, tests, consumers, rollout and migration that AGENTS.md requires, and the matching change in ragtime-rag-orch, which refuses the image until it accepts the new line.",
+      ],
+    },
+    {
+      matchDepNames: ["erlang/otp"],
+      dependencyDashboardApproval: true,
+      groupName: "Erlang/OTP release line",
+      prBodyNotes: [
+        "An Erlang/OTP release line change needs RabbitMQ's support for it, the explanation of compatibility, tests, consumers, rollout and migration that AGENTS.md requires, and the matching change in ragtime-rag-orch, which refuses the image until it accepts the new line.",
+      ],
+    },
+    {
+      matchDepNames: ["openssl"],
+      dependencyDashboardApproval: true,
+      groupName: "OpenSSL LTS release line",
+      prBodyNotes: [
+        "An OpenSSL LTS line change needs Erlang/OTP's support for it, the explanation of compatibility, tests, consumers, rollout and migration that AGENTS.md requires, and the matching change in ragtime-rag-orch, which refuses the image until it accepts the new line.",
+      ],
+    },
+  ],
+}
