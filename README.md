@@ -200,15 +200,17 @@ the `ragtime-renovate` GitHub App, whose client ID is the repository variable
 `RENOVATE_APP_CLIENT_ID` and private key the secret `RENOVATE_APP_PRIVATE_KEY`.
 A new RabbitMQ, Erlang/OTP or OpenSSL release line waits on the Dependency
 Dashboard issue, each as an item of its own, and gets its own pull request only
-once approved. OpenSSL is offered only the lines endoflife.date marks as LTS. A
-new RabbitMQ line also needs a new recipe snapshot: the rendering stops until
-`vendor/` holds one for it. Every line change needs the matching change in
-`ragtime-rag-orch`, which refuses the image until it accepts the new line. New
-GitHub Actions versions and a new Trivy line go in one cumulative pull request.
-Renovate leaves alone the Ubuntu base, the recipe revision and its package
-steps, which come from the checksum-locked recipe. Nothing is merged
-automatically. Pull requests validate `renovate.json5` with the Renovate
-release `renovate.yml` runs.
+once approved. Ticking a box on the Dependency Dashboard issue (an approval, a
+retry) starts a run at once instead of at the weekly one; Renovate's own edits
+of the issue start none. OpenSSL is offered only the lines endoflife.date marks
+as LTS. A new RabbitMQ line also needs a new recipe snapshot: the rendering
+stops until `vendor/` holds one for it. Every line change needs the matching
+change in `ragtime-rag-orch`, which refuses the image until it accepts the new
+line. New GitHub Actions versions and a new Trivy line go in one cumulative pull
+request. Renovate leaves alone the Ubuntu base, the recipe revision and its
+package steps, which come from the checksum-locked recipe. Nothing is merged
+automatically. Pull requests validate `renovate.json5` with the Renovate release
+`renovate.yml` runs.
 
 ### Retention cleanup
 
